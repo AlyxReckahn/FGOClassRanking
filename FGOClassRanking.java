@@ -24,6 +24,7 @@ public class FGOClassRanking
 
     public static void main(String[] args)
     {
+        Scanner scnr = new Scanner(System.in);
         makeGrid();
 
         //Print the grid for testing. Start with the top listing of names, and an indication of
@@ -48,6 +49,41 @@ public class FGOClassRanking
 
         double[] defRanks = defensivePageRank();
         printInOrder(defRanks, "Defensive rankings");
+
+        scnr.nextLine();
+
+        double[] splitOffRanks = splitOffensivePageRank();
+        printInOrder(splitOffRanks, "Split offensive rankings");
+
+        scnr.nextLine();
+
+        double[] unifiedOffRanks = unifiedOffensivePageRank();
+        printInOrder(unifiedOffRanks, "Unified offensive rankings");
+
+        scnr.nextLine();
+
+        double[] overallSplitRanks = new double[NUMCLS];
+        for (int i = 0; i < NUMCLS; i++)
+        {
+            overallSplitRanks[i] = ((unifiedOffRanks[i] + splitOffRanks[i])/2 + defRanks[i])/2;
+        }
+        printInOrder(overallSplitRanks, "Overall rankings with split");
+
+        scnr.nextLine();
+
+        double[] overallUnsplitRanks = new double[NUMCLS];
+        for (int i = 0; i < NUMCLS; i++)
+        {
+            overallUnsplitRanks[i] = (unifiedOffRanks[i]  + defRanks[i])/2;
+        }
+        printInOrder(overallUnsplitRanks, "Overall rankings without split");
+
+        scnr.nextLine();
+
+        double[] markovRanks = markovClassRanking();
+        printInOrder(markovRanks, "Markovian ranking");
+
+        scnr.close();
     }
 
 
@@ -146,7 +182,7 @@ public class FGOClassRanking
         }
 
         // Now print the links array for testing.
-        /*for (int atk = 0; atk < NUMCLS; atk++)
+        for (int atk = 0; atk < NUMCLS; atk++)
         {
             System.out.printf("%s: ", classNames[atk]);
             int numLinks = pageLinks.get(atk).size();
@@ -155,7 +191,7 @@ public class FGOClassRanking
                 System.out.printf("%s, ", classNames[pageLinks.get(atk).get(linker)]);
             }
             System.out.println("");
-        }*/
+        }
 
         // Now we can start iterating to find the class ranks.
         Scanner scnr = new Scanner(System.in);
@@ -199,6 +235,244 @@ public class FGOClassRanking
                 System.out.printf("%s%6.3f, ", classNames[i], classRanks[i]);
             }
             System.out.println("");*/
+        }
+
+        return classRanks;
+    }
+
+
+    // This does an offensive PageRank algorithm to rank classes on offense, slitting 1.5x and 2.0x.
+    public static double[] splitOffensivePageRank()
+    {
+        double[] classRanks = new double[NUMCLS];
+        Arrays.fill(classRanks, 1.0/NUMCLS); //All classes start with the same rank, and sum to 1.
+
+        // Next, we need to find the links for the algorithm; A links to B if B does 2.0x
+        // or 1.5x damage to A. We have full and half links for these cases.
+
+        ArrayList<ArrayList<Integer>> fullLinks = new ArrayList<ArrayList<Integer>>();
+        for (int i = 0; i < NUMCLS; i++)
+        {
+            fullLinks.add(new ArrayList<Integer>());
+        }
+
+        ArrayList<ArrayList<Integer>> halfLinks = new ArrayList<ArrayList<Integer>>();
+        for (int i = 0; i < NUMCLS; i++)
+        {
+            halfLinks.add(new ArrayList<Integer>());
+        }
+
+        // Now iterate over the array to find all of the links.
+        for (int atk = 0; atk < NUMCLS; atk++)
+        {
+            for (int def = 0; def < NUMCLS; def++)
+            {
+                if (atk == def) continue; //Cannot link to self.
+
+                if (dmgTo[atk][def] > 1.75)
+                {
+                    fullLinks.get(def).add(atk); //If A does extra to B, that's good for A, not B.
+                }
+                else if (dmgTo[atk][def] > 1.25)
+                {
+                    halfLinks.get(def).add(atk); //If A does extra to B, that's good for A, not B.
+                }
+            }
+        }
+
+        // Now print the links arrays for testing.
+        for (int atk = 0; atk < NUMCLS; atk++)
+        {
+            System.out.printf("%s: ", classNames[atk]);
+            int numFulls = fullLinks.get(atk).size();
+            for (int linker = 0; linker < numFulls; linker++)
+            {
+                System.out.printf("%s, ", classNames[fullLinks.get(atk).get(linker)]);
+            }
+            System.out.print("(");
+            int numHalfs = halfLinks.get(atk).size();
+            for (int linker = 0; linker < numHalfs; linker++)
+            {
+                System.out.printf("%s, ", classNames[halfLinks.get(atk).get(linker)]);
+            }
+
+            System.out.println(")");
+        }
+
+        // Now we can start iterating to find the class ranks.
+        Scanner scnr = new Scanner(System.in);
+        for (int iteration = 0; iteration < 1000; iteration++) //Repeat until definitely stable.
+        {
+            double[] newRanks = new double[NUMCLS]; //Array to hold the new classes.
+
+            for (int node = 0; node < NUMCLS; node++) //Node is the class whose value we're using.
+            {
+                double valueLeft = classRanks[node];
+                double dampingLoss = DAMPING * valueLeft; //Start by spreading around the damping.
+                for (int otherCls = 0; otherCls < NUMCLS; otherCls++)
+                {
+                    if (otherCls != node)
+                    {
+                        newRanks[otherCls] += dampingLoss / (NUMCLS - 1);
+                    }
+                }
+                valueLeft -= dampingLoss;
+
+                // Next, split the rest of its value among its links (if any).
+                ArrayList<Integer> myFulls = fullLinks.get(node);
+                int numFulls = myFulls.size();
+                ArrayList<Integer> myHalfs = halfLinks.get(node);
+                int numHalfs = myHalfs.size();
+                int numLinks = numFulls + numHalfs;
+                if (numLinks == 0) //If no links, just keep the rest, no div 0s!
+                {
+                    newRanks[node] += valueLeft;
+                }
+                else
+                {
+                    for (int i = 0; i < numFulls; i++)
+                    {
+                        newRanks[myFulls.get(i)] += valueLeft / numLinks;
+                    }
+                    for (int i = 0; i < numHalfs; i++)
+                    {
+                        newRanks[myHalfs.get(i)] += (valueLeft / numLinks) / 2;
+                        newRanks[node] += (valueLeft / numLinks) / 2;
+                    }
+                }
+            }
+            classRanks = newRanks; // Assign the new rankings.
+
+            // Print the resuts of each iteration for clarity.
+            /*for (int i = 0; i < NUMCLS; i++)
+            {
+                System.out.printf("%s%6.3f, ", classNames[i], classRanks[i]);
+            }
+            System.out.println("");*/
+        }
+
+        return classRanks;
+    }
+
+
+    // This does a offensive PageRank algorithm to rank classes on offense, with 1.5x and 2.0x fused.
+    public static double[] unifiedOffensivePageRank()
+    {
+        double[] classRanks = new double[NUMCLS];
+        Arrays.fill(classRanks, 1.0/NUMCLS); //All classes start with the same rank, and sum to 1.
+
+        // Next, we need to find the links for the algorithm; A links to B if B does more than
+        // 1.0x damage to A. First make some ArrayLists to store the links.
+
+        ArrayList<ArrayList<Integer>> pageLinks = new ArrayList<ArrayList<Integer>>();
+
+        for (int i = 0; i < NUMCLS; i++)
+        {
+            pageLinks.add(new ArrayList<Integer>());
+        }
+
+        // Now iterate over the array to find all of the links.
+        for (int atk = 0; atk < NUMCLS; atk++)
+        {
+            for (int def = 0; def < NUMCLS; def++)
+            {
+                if (dmgTo[atk][def] > 1 && atk != def) //Cannot link to self.
+                {
+                    pageLinks.get(def).add(atk);
+                }
+            }
+        }
+
+        // Now print the links array for testing.
+        for (int atk = 0; atk < NUMCLS; atk++)
+        {
+            System.out.printf("%s: ", classNames[atk]);
+            int numLinks = pageLinks.get(atk).size();
+            for (int linker = 0; linker < numLinks; linker++)
+            {
+                System.out.printf("%s, ", classNames[pageLinks.get(atk).get(linker)]);
+            }
+            System.out.println("");
+        }
+
+        // Now we can start iterating to find the class ranks.
+        Scanner scnr = new Scanner(System.in);
+        for (int iteration = 0; iteration < 1000; iteration++) //Repeat until definitely stable.
+        {
+            double[] newRanks = new double[NUMCLS]; //Array to hold the new classes.
+
+            for (int node = 0; node < NUMCLS; node++) //Node is the class whose value we're using.
+            {
+                double valueLeft = classRanks[node];
+                double dampingLoss = DAMPING * valueLeft; //Start by spreading around the damping.
+                for (int otherCls = 0; otherCls < NUMCLS; otherCls++)
+                {
+                    if (otherCls != node)
+                    {
+                        newRanks[otherCls] += dampingLoss / (NUMCLS - 1);
+                    }
+                }
+                valueLeft -= dampingLoss;
+
+                // Next, split the rest of its value among its links (if any).
+                ArrayList<Integer> myLinks = pageLinks.get(node);
+                int numLinks = myLinks.size();
+                if (numLinks == 0) //If no links, just keep the rest, no div 0s!
+                {
+                    newRanks[node] += valueLeft;
+                }
+                else
+                {
+                    for (int i = 0; i < numLinks; i++)
+                    {
+                        newRanks[myLinks.get(i)] += valueLeft / numLinks;
+                    }
+                }
+            }
+            classRanks = newRanks; // Assign the new rankings.
+
+            // Print the resuts of each iteration for clarity.
+            /*for (int i = 0; i < NUMCLS; i++)
+            {
+                System.out.printf("%s%6.3f, ", classNames[i], classRanks[i]);
+            }
+            System.out.println("");*/
+        }
+
+        return classRanks;
+    }
+
+
+    //This function uses my own Markov-style function to determine the ranking of classes.
+    public static double[] markovClassRanking()
+    {
+        double[] classRanks = new double[NUMCLS];
+        Arrays.fill(classRanks, 1.0/NUMCLS); //All classes start with the same rank, and sum to 1.
+
+        for (int iteration = 0; iteration < 1000; iteration++)
+        {
+            double[] newRanks = new double[NUMCLS];
+
+            for (int giver = 0; giver < NUMCLS; giver++)
+            {
+                double portion = classRanks[giver] / NUMCLS;
+
+                for (int taker = 0; taker < NUMCLS; taker++)
+                {
+                    double threat = dmgTo[taker][giver] / MAXDMG;
+                    newRanks[taker] += threat * portion;
+                    newRanks[giver] += (1-threat) * portion;
+                }
+            }
+
+            classRanks = newRanks; // Assign the new rankings.
+
+            // Print the resuts of each iteration for clarity.
+            for (int i = 0; i < NUMCLS; i++)
+            {
+                System.out.printf("%s%6.3f, ", classNames[i], classRanks[i]);
+            }
+            System.out.println("");
         }
 
         return classRanks;
