@@ -5,9 +5,9 @@ import java.util.*;
 
 public class FGOClassRanking
 {
-    // First declare the classes as constants for easy reference; probably should be using an enum, but this seems to be shorter.
-    // The order is Shielder, Saber, Lancer, Archer, Caster, Assassin, Rider, Ruler, Mooncancer,
-    // Avenger, Alterego, Foreigner, Pretender, Berserker.
+    // First declare the classes as constants for easy reference; probably should be using an enum,
+    // but this seems to be shorter. The order is Shielder, Saber, Lancer, Archer, Caster, Assassin,
+    // Rider, Ruler, Mooncancer, Avenger, Alterego, Foreigner, Pretender, Berserker.
 
     public static final int SHD=0, SAB=1, LAN=2, ARC=3, CAS=4, ASN=5, RID=6, RUL=7, MCR=8, AVG=9,
     ALR=10, FRN=11, PRT=12, BSK=13;
@@ -15,36 +15,9 @@ public class FGOClassRanking
     public static final String[] classNames = {"SHD", "SAB", "LAN", "ARC", "CAS", "ASN", "RID",
     "RUL", "MCR", "AVG", "ALR", "FRN", "PRT", "BSK"};
 
-    /*public enum Serv {
-        SHD (0),
-        SAB (1),
-        LAN (2),
-        ARC (3),
-        CAS (4),
-        ASN (5),
-        RID (6),
-        RUL (7),
-        MCR (8),
-        AVG (9),
-        ALR (10),
-        FRN (11),
-        PRT (12),
-        BSK (13);
-
-        private final int index;
-
-        private Serv(int servInd)
-        {
-            this.index = servInd;
-        }
-
-        public int val()
-        {
-            return this.index;
-        }
-    }*/
-
     public static final int NUMCLS = 14;
+    public static final double DAMPING = 0.1;
+    public static final double MAXDMG = 2.0;
 
     // This array will hold the grid of class affinities.
     public static double[][] dmgTo;
@@ -72,15 +45,11 @@ public class FGOClassRanking
             }
             System.out.println("");
         }
-        /*for (double[] row: dmgTo)
-        {
-            for (double entry: row)
-            {
-                System.out.printf("%4.1f", entry);
-            }
-            System.out.println("");
-        }*/
+
+        double[] defRanks = defensivePageRank();
+        printInOrder(defRanks, "Defensive rankings");
     }
+
 
     // I figured making this function was easier to do and check than typing it all out by hand.
     public static void makeGrid()
@@ -142,8 +111,123 @@ public class FGOClassRanking
             dmgTo[PRT][cavalry] = 0.5;
         }
 
-        //finally, add Foreigner's special relationships.
+        // Finally, add Foreigner's special relationships.
         dmgTo[FRN][FRN] = 2;
         dmgTo[BSK][FRN] = 0.5;
+    }
+
+
+    // This does a defensive PageRank algorithm to rank classes on defense.
+    public static double[] defensivePageRank()
+    {
+        double[] classRanks = new double[NUMCLS];
+        Arrays.fill(classRanks, 1.0/NUMCLS); //All classes start with the same rank, and sum to 1.
+
+        // Next, we need to find the links for the algorithm; A links to B if A does 0.5x damage
+        // to B. First make some ArrayLists to store the links.
+
+        ArrayList<ArrayList<Integer>> pageLinks = new ArrayList<ArrayList<Integer>>();
+
+        for (int i = 0; i < NUMCLS; i++)
+        {
+            pageLinks.add(new ArrayList<Integer>());
+        }
+
+        // Now iterate over the array to find all of the links.
+        for (int atk = 0; atk < NUMCLS; atk++)
+        {
+            for (int def = 0; def < NUMCLS; def++)
+            {
+                if (dmgTo[atk][def] < 1 && atk != def) //Cannot link to self.
+                {
+                    pageLinks.get(atk).add(def);
+                }
+            }
+        }
+
+        // Now print the links array for testing.
+        /*for (int atk = 0; atk < NUMCLS; atk++)
+        {
+            System.out.printf("%s: ", classNames[atk]);
+            int numLinks = pageLinks.get(atk).size();
+            for (int linker = 0; linker < numLinks; linker++)
+            {
+                System.out.printf("%s, ", classNames[pageLinks.get(atk).get(linker)]);
+            }
+            System.out.println("");
+        }*/
+
+        // Now we can start iterating to find the class ranks.
+        Scanner scnr = new Scanner(System.in);
+        for (int iteration = 0; iteration < 1000; iteration++) //Repeat until definitely stable.
+        {
+            double[] newRanks = new double[NUMCLS]; //Array to hold the new classes.
+
+            for (int node = 0; node < NUMCLS; node++) //Node is the class whose value we're using.
+            {
+                double valueLeft = classRanks[node];
+                double dampingLoss = DAMPING * valueLeft; //Start by spreading around the damping.
+                for (int otherCls = 0; otherCls < NUMCLS; otherCls++)
+                {
+                    if (otherCls != node)
+                    {
+                        newRanks[otherCls] += dampingLoss / (NUMCLS - 1);
+                    }
+                }
+                valueLeft -= dampingLoss;
+
+                // Next, split the rest of its value among its links (if any).
+                ArrayList<Integer> myLinks = pageLinks.get(node);
+                int numLinks = myLinks.size();
+                if (numLinks == 0) //If no links, just keep the rest, no div 0s!
+                {
+                    newRanks[node] += valueLeft;
+                }
+                else
+                {
+                    for (int i = 0; i < numLinks; i++)
+                    {
+                        newRanks[myLinks.get(i)] += valueLeft / numLinks;
+                    }
+                }
+            }
+            classRanks = newRanks; // Assign the new rankings.
+
+            // Print the resuts of each iteration for clarity.
+            /*for (int i = 0; i < NUMCLS; i++)
+            {
+                System.out.printf("%s%6.3f, ", classNames[i], classRanks[i]);
+            }
+            System.out.println("");*/
+        }
+
+        return classRanks;
+    }
+
+
+    // This function prints the results of a pageRank in descending order.
+    public static void printInOrder(double[] rankings, String rankingDesc)
+    {
+        boolean[] listed = new boolean[NUMCLS]; //Track which ones we've already displayed.
+
+        System.out.printf("%s:\n", rankingDesc);
+
+        for (int place = 1; place <= NUMCLS; place++)
+        {
+            double maxVal = 0.0;
+            int maxInd = -1;
+
+            for (int check = 0; check < NUMCLS; check++)
+            {
+                if (rankings[check] > maxVal && !listed[check])
+                {
+                    maxVal = rankings[check];
+                    maxInd = check;
+                }
+            }
+
+            System.out.printf("Place #%d: %s%8.5f\n", place, classNames[maxInd], maxVal);
+            listed[maxInd] = true;
+        }
     }
 }
