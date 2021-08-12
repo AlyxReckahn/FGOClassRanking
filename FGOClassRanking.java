@@ -12,82 +12,52 @@ public class FGOClassRanking
     public static final int SHD=0, SAB=1, LAN=2, ARC=3, CAS=4, ASN=5, RID=6, RUL=7, MCR=8, AVG=9,
     ALR=10, FRN=11, PRT=12, BSK=13;
 
-    public static final String[] classNames = {"SHD", "SAB", "LAN", "ARC", "CAS", "ASN", "RID",
-    "RUL", "MCR", "AVG", "ALR", "FRN", "PRT", "BSK"};
+    public static final String[] fullClassNames = {"Shielder", "Saber", "Lancer", "Archer",
+    "Caster", "Assassin", "Rider", "Ruler", "Mooncancer", "Avenger", "Alter Ego", "Foreigner",
+    "Pretender", "Berserker"};
 
-    public static final int NUMCLS = 14;
-    public static final double DAMPING = 0.1;
-    public static final double MAXDMG = 2.0;
+    public static final int NUMCLS = 14; // The number of classes.
+    public static final double DAMPING = 0.1; // The damping constant in PageRank.
+    public static final double MAXDMG = 2.0; // The maximum class advantage for my Markov algorithm.
 
     // This array will hold the grid of class affinities.
     public static double[][] dmgTo;
 
     public static void main(String[] args)
     {
-        Scanner scnr = new Scanner(System.in);
-        makeGrid();
+        makeGrid(); //Create the class advantage matrix.
 
-        //Print the grid for testing. Start with the top listing of names, and an indication of
-        //attack vs defense.
-        System.out.print("a/d ");
-        for (int row = 0; row < NUMCLS; row++)
-        {
-            System.out.printf("%s ", classNames[row]);
-        }
-        System.out.println("");
-
-        // Next iterate though the array to print its contents.
-        for (int row = 0; row < NUMCLS; row++)
-        {
-            System.out.printf("%s", classNames[row]); //Start each row with the class name.
-            for (int col = 0; col < NUMCLS; col++)
-            {
-                System.out.printf("%4.1f", dmgTo[row][col]);
-            }
-            System.out.println("");
-        }
-
+        // There are several different rankings this program performs, as listed below.
         double[] defRanks = defensivePageRank();
         printInOrder(defRanks, "Defensive rankings");
 
-        scnr.nextLine();
-
         double[] splitOffRanks = splitOffensivePageRank();
-        printInOrder(splitOffRanks, "Split offensive rankings");
-
-        scnr.nextLine();
+        printInOrder(splitOffRanks, "\nSplit offensive rankings");
 
         double[] unifiedOffRanks = unifiedOffensivePageRank();
-        printInOrder(unifiedOffRanks, "Unified offensive rankings");
-
-        scnr.nextLine();
+        printInOrder(unifiedOffRanks, "\nUnified offensive rankings");
 
         double[] overallSplitRanks = new double[NUMCLS];
         for (int i = 0; i < NUMCLS; i++)
         {
             overallSplitRanks[i] = ((unifiedOffRanks[i] + splitOffRanks[i])/2 + defRanks[i])/2;
         }
-        printInOrder(overallSplitRanks, "Overall rankings with split");
-
-        scnr.nextLine();
+        printInOrder(overallSplitRanks, "\nOverall rankings with split");
 
         double[] overallUnsplitRanks = new double[NUMCLS];
         for (int i = 0; i < NUMCLS; i++)
         {
             overallUnsplitRanks[i] = (unifiedOffRanks[i]  + defRanks[i])/2;
         }
-        printInOrder(overallUnsplitRanks, "Overall rankings without split");
-
-        scnr.nextLine();
+        printInOrder(overallUnsplitRanks, "\nOverall rankings without split");
 
         double[] markovRanks = markovClassRanking();
-        printInOrder(markovRanks, "Markovian ranking");
-
-        scnr.close();
+        printInOrder(markovRanks, "\nMarkovian ranking");
     }
 
 
-    // I figured making this function was easier to do and check than typing it all out by hand.
+    // I figured making this function to create the clss advantage matrix was easier to do
+    // and check than typing it all out by hand.
     public static void makeGrid()
     {
         // This array will track the affinities; dmgTo[x][y] is how much damage x deals to y.
@@ -110,7 +80,7 @@ public class FGOClassRanking
             dmgTo[BSK][i] = 1.5;
         }
 
-        // Next are the four main trangles.
+        // Next are the four main trangles; sorry if this is needlessly cryptic, but it's short.
         int[] triangleStarts = {SAB, CAS, RUL, ALR};
         for (int startClass : triangleStarts)
         {
@@ -125,8 +95,7 @@ public class FGOClassRanking
             }
         }
 
-        // Next we add in the Ruler's resistance to the six main classes.
-
+        // Next we add in the Ruler's resistance to the main six.
         for (int i = 0; i < 6; i++)
         {
             dmgTo[SAB + i][RUL] = 0.5;
@@ -181,28 +150,17 @@ public class FGOClassRanking
             }
         }
 
-        // Now print the links array for testing.
-        for (int atk = 0; atk < NUMCLS; atk++)
-        {
-            System.out.printf("%s: ", classNames[atk]);
-            int numLinks = pageLinks.get(atk).size();
-            for (int linker = 0; linker < numLinks; linker++)
-            {
-                System.out.printf("%s, ", classNames[pageLinks.get(atk).get(linker)]);
-            }
-            System.out.println("");
-        }
-
         // Now we can start iterating to find the class ranks.
         Scanner scnr = new Scanner(System.in);
-        for (int iteration = 0; iteration < 1000; iteration++) //Repeat until definitely stable.
+        for (int iteration = 0; iteration < 1000; iteration++) // 1000 is overkill, but -v("/)v-.
         {
-            double[] newRanks = new double[NUMCLS]; //Array to hold the new classes.
+            double[] newRanks = new double[NUMCLS]; // Array to hold the new rankings.
 
-            for (int node = 0; node < NUMCLS; node++) //Node is the class whose value we're using.
+            for (int node = 0; node < NUMCLS; node++) // Node is the class whose value we're using.
             {
                 double valueLeft = classRanks[node];
-                double dampingLoss = DAMPING * valueLeft; //Start by spreading around the damping.
+                // Start with spreading the damping value to the other classes.
+                double dampingLoss = DAMPING * valueLeft;
                 for (int otherCls = 0; otherCls < NUMCLS; otherCls++)
                 {
                     if (otherCls != node)
@@ -215,33 +173,27 @@ public class FGOClassRanking
                 // Next, split the rest of its value among its links (if any).
                 ArrayList<Integer> myLinks = pageLinks.get(node);
                 int numLinks = myLinks.size();
-                if (numLinks == 0) //If no links, just keep the rest, no div 0s!
+                if (numLinks == 0) // If no links, just keep the rest, no div 0s!
                 {
                     newRanks[node] += valueLeft;
                 }
                 else
                 {
                     for (int i = 0; i < numLinks; i++)
-                    {
+                    {   // Give a part of the valeu left to each link.
                         newRanks[myLinks.get(i)] += valueLeft / numLinks;
                     }
                 }
             }
             classRanks = newRanks; // Assign the new rankings.
-
-            // Print the resuts of each iteration for clarity.
-            /*for (int i = 0; i < NUMCLS; i++)
-            {
-                System.out.printf("%s%6.3f, ", classNames[i], classRanks[i]);
-            }
-            System.out.println("");*/
         }
 
         return classRanks;
     }
 
 
-    // This does an offensive PageRank algorithm to rank classes on offense, slitting 1.5x and 2.0x.
+    // This does an offensive PageRank algorithm to rank classes on offense. This version treats
+    // 1.5x and 2.0x differently, though on introspection, I did not handle 1.5x right.
     public static double[] splitOffensivePageRank()
     {
         double[] classRanks = new double[NUMCLS];
@@ -250,6 +202,7 @@ public class FGOClassRanking
         // Next, we need to find the links for the algorithm; A links to B if B does 2.0x
         // or 1.5x damage to A. We have full and half links for these cases.
 
+        // First we make some lists of ArrayLists to hold the links.
         ArrayList<ArrayList<Integer>> fullLinks = new ArrayList<ArrayList<Integer>>();
         for (int i = 0; i < NUMCLS; i++)
         {
@@ -267,48 +220,30 @@ public class FGOClassRanking
         {
             for (int def = 0; def < NUMCLS; def++)
             {
-                if (atk == def) continue; //Cannot link to self.
+                if (atk == def) continue; // Cannot link to self.
 
-                if (dmgTo[atk][def] > 1.75)
+                if (dmgTo[atk][def] > 1.75) // 2.0x.
                 {
-                    fullLinks.get(def).add(atk); //If A does extra to B, that's good for A, not B.
+                    fullLinks.get(def).add(atk); // If A does extra to B, that's good for A.
                 }
-                else if (dmgTo[atk][def] > 1.25)
+                else if (dmgTo[atk][def] > 1.25)// 1.5x.
                 {
-                    halfLinks.get(def).add(atk); //If A does extra to B, that's good for A, not B.
+                    halfLinks.get(def).add(atk);
                 }
             }
-        }
-
-        // Now print the links arrays for testing.
-        for (int atk = 0; atk < NUMCLS; atk++)
-        {
-            System.out.printf("%s: ", classNames[atk]);
-            int numFulls = fullLinks.get(atk).size();
-            for (int linker = 0; linker < numFulls; linker++)
-            {
-                System.out.printf("%s, ", classNames[fullLinks.get(atk).get(linker)]);
-            }
-            System.out.print("(");
-            int numHalfs = halfLinks.get(atk).size();
-            for (int linker = 0; linker < numHalfs; linker++)
-            {
-                System.out.printf("%s, ", classNames[halfLinks.get(atk).get(linker)]);
-            }
-
-            System.out.println(")");
         }
 
         // Now we can start iterating to find the class ranks.
         Scanner scnr = new Scanner(System.in);
-        for (int iteration = 0; iteration < 1000; iteration++) //Repeat until definitely stable.
+        for (int iteration = 0; iteration < 1000; iteration++)
         {
-            double[] newRanks = new double[NUMCLS]; //Array to hold the new classes.
+            double[] newRanks = new double[NUMCLS]; // Array to hold the new classes.
 
-            for (int node = 0; node < NUMCLS; node++) //Node is the class whose value we're using.
+            for (int node = 0; node < NUMCLS; node++) // Node is the class whose value we're using.
             {
                 double valueLeft = classRanks[node];
-                double dampingLoss = DAMPING * valueLeft; //Start by spreading around the damping.
+                // Start by spreading the damping value to the other classes.
+                double dampingLoss = DAMPING * valueLeft;
                 for (int otherCls = 0; otherCls < NUMCLS; otherCls++)
                 {
                     if (otherCls != node)
@@ -334,6 +269,8 @@ public class FGOClassRanking
                     {
                         newRanks[myFulls.get(i)] += valueLeft / numLinks;
                     }
+
+                    // For a half link, just give half the value to the link and keep the rest.
                     for (int i = 0; i < numHalfs; i++)
                     {
                         newRanks[myHalfs.get(i)] += (valueLeft / numLinks) / 2;
@@ -342,20 +279,14 @@ public class FGOClassRanking
                 }
             }
             classRanks = newRanks; // Assign the new rankings.
-
-            // Print the resuts of each iteration for clarity.
-            /*for (int i = 0; i < NUMCLS; i++)
-            {
-                System.out.printf("%s%6.3f, ", classNames[i], classRanks[i]);
-            }
-            System.out.println("");*/
         }
 
         return classRanks;
     }
 
 
-    // This does a offensive PageRank algorithm to rank classes on offense, with 1.5x and 2.0x fused.
+    // This does a offensive PageRank algorithm to rank classes on offense.
+    // This treats 1.5x and 2.0x as the same.
     public static double[] unifiedOffensivePageRank()
     {
         double[] classRanks = new double[NUMCLS];
@@ -383,28 +314,17 @@ public class FGOClassRanking
             }
         }
 
-        // Now print the links array for testing.
-        for (int atk = 0; atk < NUMCLS; atk++)
-        {
-            System.out.printf("%s: ", classNames[atk]);
-            int numLinks = pageLinks.get(atk).size();
-            for (int linker = 0; linker < numLinks; linker++)
-            {
-                System.out.printf("%s, ", classNames[pageLinks.get(atk).get(linker)]);
-            }
-            System.out.println("");
-        }
-
         // Now we can start iterating to find the class ranks.
         Scanner scnr = new Scanner(System.in);
-        for (int iteration = 0; iteration < 1000; iteration++) //Repeat until definitely stable.
+        for (int iteration = 0; iteration < 1000; iteration++)
         {
-            double[] newRanks = new double[NUMCLS]; //Array to hold the new classes.
+            double[] newRanks = new double[NUMCLS]; // Array to hold the new rankings,
 
-            for (int node = 0; node < NUMCLS; node++) //Node is the class whose value we're using.
+            for (int node = 0; node < NUMCLS; node++) // Node is the class whose value we're using.
             {
                 double valueLeft = classRanks[node];
-                double dampingLoss = DAMPING * valueLeft; //Start by spreading around the damping.
+                // First split the damping among the other classes.
+                double dampingLoss = DAMPING * valueLeft;
                 for (int otherCls = 0; otherCls < NUMCLS; otherCls++)
                 {
                     if (otherCls != node)
@@ -417,7 +337,7 @@ public class FGOClassRanking
                 // Next, split the rest of its value among its links (if any).
                 ArrayList<Integer> myLinks = pageLinks.get(node);
                 int numLinks = myLinks.size();
-                if (numLinks == 0) //If no links, just keep the rest, no div 0s!
+                if (numLinks == 0) // If no links, just keep the rest, no div 0s!
                 {
                     newRanks[node] += valueLeft;
                 }
@@ -430,13 +350,6 @@ public class FGOClassRanking
                 }
             }
             classRanks = newRanks; // Assign the new rankings.
-
-            // Print the resuts of each iteration for clarity.
-            /*for (int i = 0; i < NUMCLS; i++)
-            {
-                System.out.printf("%s%6.3f, ", classNames[i], classRanks[i]);
-            }
-            System.out.println("");*/
         }
 
         return classRanks;
@@ -455,10 +368,14 @@ public class FGOClassRanking
 
             for (int giver = 0; giver < NUMCLS; giver++)
             {
+                // First, each class splits its value into a portion for each class,
+                // including itself.
                 double portion = classRanks[giver] / NUMCLS;
 
                 for (int taker = 0; taker < NUMCLS; taker++)
                 {
+                    // Give an amount of the portion to each class depending on
+                    // how well they can attack this class, and keep the rest.
                     double threat = dmgTo[taker][giver] / MAXDMG;
                     newRanks[taker] += threat * portion;
                     newRanks[giver] += (1-threat) * portion;
@@ -466,13 +383,6 @@ public class FGOClassRanking
             }
 
             classRanks = newRanks; // Assign the new rankings.
-
-            // Print the resuts of each iteration for clarity.
-            for (int i = 0; i < NUMCLS; i++)
-            {
-                System.out.printf("%s%6.3f, ", classNames[i], classRanks[i]);
-            }
-            System.out.println("");
         }
 
         return classRanks;
@@ -482,17 +392,19 @@ public class FGOClassRanking
     // This function prints the results of a pageRank in descending order.
     public static void printInOrder(double[] rankings, String rankingDesc)
     {
-        boolean[] listed = new boolean[NUMCLS]; //Track which ones we've already displayed.
+        boolean[] listed = new boolean[NUMCLS]; // Track which ones we've already displayed.
 
-        System.out.printf("%s:\n", rankingDesc);
+        System.out.printf("%s:\n", rankingDesc); // Print the introduction.
 
-        for (int place = 1; place <= NUMCLS; place++)
+        for (int place = 1; place <= NUMCLS; place++) // This loop finds the highest one each time.
         {
             double maxVal = 0.0;
             int maxInd = -1;
 
             for (int check = 0; check < NUMCLS; check++)
             {
+                // If the new value is higher than the current max and 
+                // not already used, it becomes the max.
                 if (rankings[check] > maxVal && !listed[check])
                 {
                     maxVal = rankings[check];
@@ -500,7 +412,8 @@ public class FGOClassRanking
                 }
             }
 
-            System.out.printf("Place #%d: %s%8.5f\n", place, classNames[maxInd], maxVal);
+            // Print the formatted percent and class name, and mark the class as listed.
+            System.out.printf("%6.3f%% %s\n", maxVal * 100, fullClassNames[maxInd]);
             listed[maxInd] = true;
         }
     }
